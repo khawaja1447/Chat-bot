@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+env/
 faiss_index/
 *.pdf
 .streamlit/secrets.toml

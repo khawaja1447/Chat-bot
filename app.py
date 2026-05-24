@@ -3,7 +3,7 @@ PDF Q&A RAG Chatbot — Streamlit UI
 """
 
 import streamlit as st
-from rag_engine import process_pdf
+from rag_engine import process_pdf, ask
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -30,26 +30,28 @@ st.markdown("""
         margin-bottom: 1.5rem;
     }
     .chat-message-user {
-        background: #eff6ff;
+        background: #1e3a5f;
         border-left: 4px solid #3b82f6;
         padding: 0.75rem 1rem;
         border-radius: 0 8px 8px 0;
         margin: 0.5rem 0;
+        color: #e8f0fe !important;
     }
     .chat-message-bot {
-        background: #f0fdf4;
+        background: #1a3a2a;
         border-left: 4px solid #22c55e;
         padding: 0.75rem 1rem;
         border-radius: 0 8px 8px 0;
         margin: 0.5rem 0;
+        color: #d1fae5 !important;
     }
     .source-box {
-        background: #fefce8;
-        border: 1px solid #fde047;
+        background: #2d2a12;
+        border: 1px solid #a16207;
         border-radius: 6px;
         padding: 0.5rem 0.75rem;
+        color: #fef08a !important;
         font-size: 0.8rem;
-        color: #713f12;
         margin-top: 0.4rem;
     }
     .stat-card {
@@ -66,7 +68,7 @@ st.markdown("""
 # ── Session state ──────────────────────────────────────────────────────────────
 def init_state():
     defaults = {
-        "conversation_chain": None,
+        "vector_store": None,
         "chat_history": [],          # list of {"role": ..., "content": ..., "sources": ...}
         "pdf_processed": False,
         "pdf_name": "",
@@ -85,15 +87,15 @@ with st.sidebar:
     st.markdown("---")
 
     api_key = st.text_input(
-        "Google Gemini API Key",
+        "Groq API Key",
         type="password",
-        placeholder="AIza...",
-        help="Get a free key at https://aistudio.google.com/app/apikey",
+        placeholder="gsk_...",
+        help="Get a free key at https://console.groq.com/keys",
     )
 
     if api_key:
         import os
-        os.environ["GOOGLE_API_KEY"] = api_key
+        os.environ["GROQ_API_KEY"] = api_key
 
     st.markdown("---")
     st.markdown("## 📂 Upload PDF")
@@ -108,8 +110,8 @@ with st.sidebar:
         if st.button("🚀 Process PDF", use_container_width=True, type="primary"):
             with st.spinner("Reading & indexing your PDF..."):
                 try:
-                    chain, n_chunks = process_pdf(uploaded_file)
-                    st.session_state.conversation_chain = chain
+                    vs, n_chunks = process_pdf(uploaded_file)
+                    st.session_state.vector_store = vs
                     st.session_state.pdf_processed = True
                     st.session_state.pdf_name = uploaded_file.name
                     st.session_state.chunk_count = n_chunks
@@ -144,7 +146,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("""
     <div style="font-size:0.75rem;color:#9ca3af">
-    Built with LangChain · FAISS · Gemini<br>
+    Built with LangChain · FAISS · Groq (Llama 3.3 70B)<br>
     RAG Chatbot — Portfolio Project
     </div>
     """, unsafe_allow_html=True)
@@ -152,7 +154,7 @@ with st.sidebar:
 
 # ── Main area ──────────────────────────────────────────────────────────────────
 st.markdown('<div class="main-header">📄 PDF Q&A Chatbot</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload a PDF and ask questions — powered by RAG + Gemini</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Upload a PDF and ask questions — powered by RAG + Llama 3.3 70B</div>', unsafe_allow_html=True)
 
 # Architecture explainer (shown when no PDF is loaded)
 if not st.session_state.pdf_processed:
@@ -160,18 +162,18 @@ if not st.session_state.pdf_processed:
     c1, c2, c3, c4 = st.columns(4)
     steps = [
         ("1️⃣", "Upload PDF", "PyMuPDF extracts all text from your document"),
-        ("2️⃣", "Chunk & Embed", "Text is split into chunks and embedded via Gemini"),
+        ("2️⃣", "Chunk & Embed", "Text is split into chunks and embedded locally (MiniLM)"),
         ("3️⃣", "Vector Search", "Your question retrieves the most relevant chunks (FAISS)"),
-        ("4️⃣", "LLM Answer", "Gemini generates an answer grounded in the retrieved context"),
+        ("4️⃣", "LLM Answer", "Llama 3.3 70B generates an answer grounded in the context"),
     ]
     for col, (icon, title, desc) in zip([c1, c2, c3, c4], steps):
         with col:
             st.markdown(f"""
-            <div style="text-align:center;padding:1rem;background:#f8fafc;
-                        border-radius:10px;border:1px solid #e2e8f0;height:140px">
+            <div style="text-align:center;padding:1rem;background:#1e293b;
+                        border-radius:10px;border:1px solid #334155;height:140px;color:#e2e8f0;">
                 <div style="font-size:2rem">{icon}</div>
-                <div style="font-weight:600;margin:0.4rem 0">{title}</div>
-                <div style="font-size:0.8rem;color:#6b7280">{desc}</div>
+                <div style="font-weight:600;margin:0.4rem 0;color:#f1f5f9">{title}</div>
+                <div style="font-size:0.8rem;color:#94a3b8">{desc}</div>
             </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -224,24 +226,40 @@ with st.form("chat_form", clear_on_submit=True):
         submitted = st.form_submit_button("Send ➤", use_container_width=True, type="primary")
 
 if submitted and user_input.strip():
-    # Append user message
     st.session_state.chat_history.append({"role": "user", "content": user_input})
 
     with st.spinner("Thinking..."):
         try:
-            result = st.session_state.conversation_chain({"question": user_input})
-            answer = result["answer"]
-            sources = result.get("source_documents", [])
-        except Exception as e:
-            answer = f"⚠️ Error generating response: {e}"
-            sources = []
+            # Build (user, assistant) history pairs from previous turns only
+            history = []
+            msgs = st.session_state.chat_history[:-1]  # exclude current question
+            i = 0
+            while i < len(msgs) - 1:
+                if msgs[i]["role"] == "user" and msgs[i+1]["role"] == "assistant":
+                    history.append((msgs[i]["content"], msgs[i+1]["content"]))
+                    i += 2
+                else:
+                    i += 1
 
-    st.session_state.chat_history.append({
-        "role": "assistant",
-        "content": answer,
-        "sources": sources,
-    })
-    st.rerun()
+            result = ask(st.session_state.vector_store, user_input, history, api_key)
+            answer = result["answer"]
+            sources = result.get("sources", [])
+            error = None
+        except Exception as e:
+            answer = None
+            sources = []
+            error = str(e)
+
+    if error:
+        st.error(f"❌ **Error:** {error}")
+        st.session_state.chat_history.pop()  # remove the unanswered user msg
+    else:
+        st.session_state.chat_history.append({
+            "role": "assistant",
+            "content": answer,
+            "sources": sources,
+        })
+        st.rerun()
 
 # Suggested questions
 if st.session_state.pdf_processed and not st.session_state.chat_history:
@@ -258,9 +276,9 @@ if st.session_state.pdf_processed and not st.session_state.chat_history:
                 st.session_state.chat_history.append({"role": "user", "content": q})
                 with st.spinner("Thinking..."):
                     try:
-                        result = st.session_state.conversation_chain({"question": q})
+                        result = ask(st.session_state.vector_store, q, [], api_key)
                         answer = result["answer"]
-                        sources = result.get("source_documents", [])
+                        sources = result.get("sources", [])
                     except Exception as e:
                         answer = f"⚠️ Error: {e}"
                         sources = []

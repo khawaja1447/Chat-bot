@@ -1,42 +1,27 @@
 """
-RAG Engine — handles PDF ingestion, vector indexing, and retrieval-augmented generation.
+RAG Engine — PDF ingestion, FAISS vector store, and retrieval-augmented generation.
+LLM: Groq (llama-3.3-70b-versatile) | Embeddings: HuggingFace all-MiniLM-L6-v2 (local)
 """
 
 import os
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
+from groq import Groq
+
 import fitz  # PyMuPDF
 from dotenv import load_dotenv
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
 
 load_dotenv()
-
-
-# ── Prompt ────────────────────────────────────────────────────────────────────
-
-SYSTEM_PROMPT = PromptTemplate(
-    input_variables=["context", "question"],
-    template="""You are a helpful assistant that answers questions based strictly on
-the provided document context. If the answer is not in the context, say
-"I couldn't find that in the document." Do not make up information.
-
-Context:
-{context}
-
-Question: {question}
-
-Answer (be concise and cite the relevant part of the document when helpful):""",
-)
 
 
 # ── PDF Parsing ────────────────────────────────────────────────────────────────
 
 def extract_text_from_pdf(uploaded_file) -> str:
-    """Extract raw text from a Streamlit UploadedFile object."""
     raw_bytes = uploaded_file.read()
     doc = fitz.open(stream=raw_bytes, filetype="pdf")
     text = ""
@@ -48,64 +33,76 @@ def extract_text_from_pdf(uploaded_file) -> str:
 
 # ── Chunking ───────────────────────────────────────────────────────────────────
 
-def chunk_text(text: str) -> list[str]:
-    """Split document text into overlapping chunks for embedding."""
+def chunk_text(text: str) -> list:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
-        length_function=len,
     )
     return splitter.split_text(text)
 
 
 # ── Vector Store ───────────────────────────────────────────────────────────────
 
-def build_vector_store(chunks: list[str]) -> FAISS:
-    """Embed chunks and store in a FAISS index."""
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+def build_vector_store(chunks: list) -> FAISS:
+    embeddings = HuggingFaceEmbeddings(
+        model_name="all-MiniLM-L6-v2",
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True},
     )
-    vector_store = FAISS.from_texts(chunks, embedding=embeddings)
-    return vector_store
+    return FAISS.from_texts(chunks, embedding=embeddings)
 
 
-# ── Conversation Chain ─────────────────────────────────────────────────────────
+# ── Direct Gemini API call ─────────────────────────────────────────────────────
 
-def build_conversation_chain(vector_store: FAISS) -> ConversationalRetrievalChain:
-    """Wrap the retriever in a conversational chain with memory."""
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
+def _call_llm(prompt: str, api_key: str) -> str:
+    """Call Groq (llama-3.3-70b) — free tier: 14,400 req/day, 30 req/min."""
+    client = Groq(api_key=api_key)
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
         temperature=0.3,
-        convert_system_message_to_human=True,
+        max_tokens=1024,
     )
-
-    memory = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True,
-        output_key="answer",
-    )
-
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=vector_store.as_retriever(search_kwargs={"k": 4}),
-        memory=memory,
-        combine_docs_chain_kwargs={"prompt": SYSTEM_PROMPT},
-        return_source_documents=True,
-        verbose=False,
-    )
-    return chain
+    return response.choices[0].message.content
 
 
-# ── Top-level helper ───────────────────────────────────────────────────────────
+# ── ask() — retrieval + generation ────────────────────────────────────────────
+
+def ask(vector_store: FAISS, question: str, history: list, api_key: str) -> dict:
+    """
+    Retrieve top-4 chunks, build a grounded prompt, call Groq LLM, return answer + sources.
+    history: list of (user_str, ai_str) tuples for conversation context.
+    """
+    docs = vector_store.similarity_search(question, k=4)
+    context = "\n\n---\n\n".join(d.page_content for d in docs)
+
+    # Build conversation history string
+    history_text = ""
+    for user_msg, ai_msg in history[-3:]:   # last 3 turns max
+        history_text += f"User: {user_msg}\nAssistant: {ai_msg}\n\n"
+
+    prompt = f"""You are a helpful assistant that answers questions based strictly on the document context below.
+If the answer is not in the context, say "I couldn't find that in the document." Do not make up information.
+
+DOCUMENT CONTEXT:
+{context}
+
+CONVERSATION HISTORY:
+{history_text}
+User: {question}
+Assistant:"""
+
+    answer = _call_llm(prompt, api_key)
+    return {"answer": answer, "sources": docs}
+
+
+# ── Top-level pipeline ─────────────────────────────────────────────────────────
 
 def process_pdf(uploaded_file):
-    """Full pipeline: PDF → chunks → FAISS → chain. Returns chain."""
+    """PDF → chunks → FAISS. Returns (vector_store, chunk_count)."""
     text = extract_text_from_pdf(uploaded_file)
     if not text.strip():
         raise ValueError("No text could be extracted from this PDF.")
     chunks = chunk_text(text)
     vector_store = build_vector_store(chunks)
-    chain = build_conversation_chain(vector_store)
-    return chain, len(chunks)
+    return vector_store, len(chunks)
