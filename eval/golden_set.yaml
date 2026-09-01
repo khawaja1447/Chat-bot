@@ -1,0 +1,685 @@
+# Golden set for retrieval evaluation.
+#
+# Each entry names the document and page(s) that actually contain the answer.
+# `pages` is a list because a few facts legitimately appear twice in one document.
+#
+# Every question must have exactly one correct home in the corpus. The corpus
+# contains a 2023 annual report that mirrors the 2024 one heading for heading, so
+# any question about a figure MUST name its year — otherwise the label is
+# ambiguous and the metric measures nothing. The same applies to policy facts
+# that appear in both the handbook and the security policy.
+#
+# kinds:
+#   lookup      wording overlaps the source; dense retrieval should find it easily
+#   paraphrase  asks for the fact in words the document never uses
+#   numeric     the answer is a figure among many nearby figures
+#   distractor  a near-identical passage exists elsewhere in the corpus
+#   temporal    right topic, wrong year is the trap
+#
+# Add cases when you find a failure. That is what the file is for.
+
+# ── Annual summary 2024 ───────────────────────────────────────────────────────
+
+- id: revenue-2024
+  question: What was total revenue in 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [3]
+  kind: temporal
+
+- id: revenue-growth-2024
+  question: By what percentage did revenue grow in 2024 relative to 2023?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [3]
+  kind: temporal
+
+- id: profit-2024
+  question: Was 2024 a profitable year, and by how much?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [3]
+  kind: temporal
+
+- id: loan-terms
+  question: What interest rate is the equipment loan at and when does it mature?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [3]
+  kind: numeric
+
+- id: slowest-channel-2024
+  question: Which sales channel grew slowest in 2024 and what was blamed for it?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [3]
+  kind: lookup
+
+- id: headcount-2024
+  question: How many people did Meridian employ at the end of 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [1]
+  kind: temporal
+
+- id: biggest-line-2024
+  question: Which product line brought in the largest share of 2024 revenue?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [1]
+  kind: temporal
+
+- id: abandoned-product
+  question: Was there a product Meridian tried and decided not to launch?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [1]
+  kind: paraphrase
+
+- id: producer-price-2024
+  question: What did Meridian pay farmers per pound in 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [2]
+  kind: temporal
+
+- id: supplier-concentration-2024
+  question: How concentrated were Meridian's green coffee suppliers in 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [2, 5]
+  kind: temporal
+
+- id: roast-loss-2024
+  question: What was the average roast loss in 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [2]
+  kind: temporal
+
+- id: batch-rejection-2024
+  question: What share of batches failed quality control in 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [2]
+  kind: temporal
+
+- id: landing-to-roast-2024
+  question: In 2024, how long did green coffee take to go from landing to roast?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [2]
+  kind: temporal
+
+- id: subscriber-count-2024
+  question: How many active subscribers were there in December 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [4]
+  kind: temporal
+
+- id: annual-prepay-churn
+  question: Do subscribers who pay for a year up front cancel less often?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: cac-payback-2024
+  question: How long did it take in 2024 to earn back the cost of acquiring a customer?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: store-ratio-2024
+  question: By what factor did the Hawthorne store beat Pearl District per square foot in 2024?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [4]
+  kind: temporal
+
+- id: instore-signups
+  question: What fraction of subscription signups came from an in-store promotion code?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [4]
+  kind: numeric
+
+- id: green-tariff
+  question: Did Meridian buy carbon offsets for its electricity, or something else?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [5]
+  kind: paraphrase
+
+- id: packaging-cost
+  question: How much did compostable packaging add to the cost of a bag?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [5]
+  kind: numeric
+
+- id: electric-roasters
+  question: Has the company committed money to replacing its gas roasters?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [5]
+  kind: paraphrase
+
+- id: outlook-2025
+  question: What revenue does management expect for 2025?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [5]
+  kind: temporal
+
+- id: hedging
+  question: Does Meridian hedge coffee prices on the futures market?
+  doc: meridian-annual-summary-2024.pdf
+  pages: [5]
+  kind: lookup
+
+# ── Annual summary 2023 (the temporal trap, from the other side) ──────────────
+
+- id: revenue-2023
+  question: What was total revenue in 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [2]
+  kind: temporal
+
+- id: headcount-2023
+  question: How many people did Meridian employ at the end of 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [1]
+  kind: temporal
+
+- id: loss-2023
+  question: How large was the net loss in 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [2]
+  kind: temporal
+
+- id: producer-price-2023
+  question: What did Meridian pay farmers per pound in 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [1]
+  kind: temporal
+
+- id: churn-2023
+  question: What was monthly subscriber churn during 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [3]
+  kind: temporal
+
+- id: largest-channel-2023
+  question: Which was the largest sales channel in 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [2]
+  kind: temporal
+
+- id: forecast-for-2024
+  question: What did management forecast for 2024 at the end of 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [3]
+  kind: temporal
+
+- id: roasted-volume-2023
+  question: How many tonnes of coffee were roasted in 2023?
+  doc: meridian-annual-summary-2023.pdf
+  pages: [2]
+  kind: temporal
+
+# ── Employee handbook ─────────────────────────────────────────────────────────
+
+- id: probation-length
+  question: How long is the probationary period for new hires?
+  doc: meridian-employee-handbook.pdf
+  pages: [1]
+  kind: lookup
+
+- id: overtime-holiday
+  question: What is the overtime rate on a company holiday?
+  doc: meridian-employee-handbook.pdf
+  pages: [1]
+  kind: numeric
+
+- id: early-shift
+  question: What time does the early production shift begin?
+  doc: meridian-employee-handbook.pdf
+  pages: [1]
+  kind: lookup
+
+- id: core-hours
+  question: When am I expected to be reachable if I am not on a production shift?
+  doc: meridian-employee-handbook.pdf
+  pages: [1]
+  kind: paraphrase
+
+- id: remote-days
+  question: How many days a week can I work from home?
+  doc: meridian-employee-handbook.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: work-abroad
+  question: Can I work from another country, and for how long?
+  doc: meridian-employee-handbook.pdf
+  pages: [2]
+  kind: lookup
+
+- id: annual-leave
+  question: How many days of paid holiday do I get each year?
+  doc: meridian-employee-handbook.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: leave-carryover
+  question: What happens to holiday I have not used by the end of the year?
+  doc: meridian-employee-handbook.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: parental-leave
+  question: How much parental leave does a primary caregiver get?
+  doc: meridian-employee-handbook.pdf
+  pages: [2]
+  kind: lookup
+
+- id: bereavement
+  question: How many days off do I get if a family member dies?
+  doc: meridian-employee-handbook.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: retirement-match
+  question: Does the company match retirement contributions, and is there a vesting cliff?
+  doc: meridian-employee-handbook.pdf
+  pages: [3]
+  kind: lookup
+
+- id: health-premium
+  question: How much of my health insurance premium does the company pay?
+  doc: meridian-employee-handbook.pdf
+  pages: [3]
+  kind: lookup
+
+- id: salary-review
+  question: When are salaries reviewed and when does a raise take effect?
+  doc: meridian-employee-handbook.pdf
+  pages: [3]
+  kind: lookup
+
+- id: referral-bonus
+  question: What do I get for referring someone who gets hired?
+  doc: meridian-employee-handbook.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: free-coffee
+  question: How much free coffee do employees get?
+  doc: meridian-employee-handbook.pdf
+  pages: [3]
+  kind: lookup
+
+- id: gift-limit
+  question: Can I accept a gift from a supplier?
+  doc: meridian-employee-handbook.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: hearing-protection
+  question: When is hearing protection required?
+  doc: meridian-employee-handbook.pdf
+  pages: [4]
+  kind: lookup
+
+- id: near-miss
+  question: Will I be disciplined for reporting something that almost went wrong?
+  doc: meridian-employee-handbook.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: outside-work
+  question: Do I have to tell anyone about a second job?
+  doc: meridian-employee-handbook.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: notice-to-leave
+  question: How much notice must I give before resigning?
+  doc: meridian-employee-handbook.pdf
+  pages: [1, 5]
+  kind: distractor
+
+- id: final-pay
+  question: When is my last paycheck issued after I resign?
+  doc: meridian-employee-handbook.pdf
+  pages: [5]
+  kind: paraphrase
+
+- id: alumni-discount
+  question: Do former employees keep the product discount?
+  doc: meridian-employee-handbook.pdf
+  pages: [5]
+  kind: lookup
+
+# ── Platform runbook ──────────────────────────────────────────────────────────
+
+- id: slo-latency
+  question: What is the p99 request latency target?
+  doc: meridian-platform-runbook.pdf
+  pages: [1]
+  kind: numeric
+
+- id: error-budget
+  question: How much downtime a month before feature deploys stop?
+  doc: meridian-platform-runbook.pdf
+  pages: [1]
+  kind: paraphrase
+
+- id: staging-data
+  question: What kind of data does the staging environment hold?
+  doc: meridian-platform-runbook.pdf
+  pages: [1]
+  kind: lookup
+
+- id: deploy-duration
+  question: How long does a deploy take from start to finish?
+  doc: meridian-platform-runbook.pdf
+  pages: [2]
+  kind: lookup
+
+- id: deploy-freeze
+  question: When are we forbidden from deploying?
+  doc: meridian-platform-runbook.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: rollback
+  question: How do I undo a bad release?
+  doc: meridian-platform-runbook.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: migration-ordering
+  question: Do database migrations run before or after the application deploy?
+  doc: meridian-platform-runbook.pdf
+  pages: [2]
+  kind: lookup
+
+- id: trace-sampling
+  question: What fraction of requests are traced?
+  doc: meridian-platform-runbook.pdf
+  pages: [2]
+  kind: numeric
+
+- id: ack-time
+  question: How quickly must I acknowledge a page?
+  doc: meridian-platform-runbook.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: sev1-checkout
+  question: At what failure rate does a checkout problem become Severity 1?
+  doc: meridian-platform-runbook.pdf
+  pages: [3]
+  kind: lookup
+
+- id: incident-commander
+  question: Should the incident commander be debugging?
+  doc: meridian-platform-runbook.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: customer-comms
+  question: Who tells customers about an outage?
+  doc: meridian-platform-runbook.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: rpo
+  question: What is the database recovery point objective?
+  doc: meridian-platform-runbook.pdf
+  pages: [4]
+  kind: numeric
+
+- id: failover
+  question: Does the database fail over to a replica automatically?
+  doc: meridian-platform-runbook.pdf
+  pages: [4]
+  kind: lookup
+
+- id: pool-exhaustion
+  question: Why would the API time out rather than return an error?
+  doc: meridian-platform-runbook.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: manual-delete
+  question: What are the rules for running a manual DELETE against production?
+  doc: meridian-platform-runbook.pdf
+  pages: [4]
+  kind: lookup
+
+- id: long-query
+  question: Where should I run a report that takes several minutes?
+  doc: meridian-platform-runbook.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: biller-restart
+  question: The nightly billing job died halfway through. How do I restart it safely?
+  doc: meridian-platform-runbook.pdf
+  pages: [5]
+  kind: paraphrase
+
+- id: double-charge
+  question: What prevents a customer being charged twice?
+  doc: meridian-platform-runbook.pdf
+  pages: [5]
+  kind: paraphrase
+
+- id: biller-causes
+  question: What usually causes the biller to fail?
+  doc: meridian-platform-runbook.pdf
+  pages: [5]
+  kind: lookup
+
+- id: refunds
+  question: How should a refund be issued?
+  doc: meridian-platform-runbook.pdf
+  pages: [5]
+  kind: lookup
+
+- id: dr-drill
+  question: How long did the most recent disaster recovery drill take?
+  doc: meridian-platform-runbook.pdf
+  pages: [6]
+  kind: lookup
+
+- id: runbook-mirror
+  question: Why is the runbook stored outside the primary region?
+  doc: meridian-platform-runbook.pdf
+  pages: [6]
+  kind: paraphrase
+
+# ── Product catalogue ─────────────────────────────────────────────────────────
+
+- id: ethiopia-notes
+  question: What does the Ethiopia Guji taste like?
+  doc: meridian-product-catalogue.pdf
+  pages: [1]
+  kind: lookup
+
+- id: ethiopia-altitude
+  question: At what altitude is the Ethiopian coffee grown?
+  doc: meridian-product-catalogue.pdf
+  pages: [1]
+  kind: numeric
+
+- id: sku-colombia
+  question: What is the product code for the 250 gram Colombian coffee?
+  doc: meridian-product-catalogue.pdf
+  pages: [1]
+  kind: lookup
+
+- id: blend-recipe
+  question: What goes into the Daily Blend?
+  doc: meridian-product-catalogue.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: cold-brew-shelf-life
+  question: How long does the cold brew concentrate keep once opened?
+  doc: meridian-product-catalogue.pdf
+  pages: [2]
+  kind: lookup
+
+- id: dilution-ratio
+  question: How much water do I add to the cold brew concentrate?
+  doc: meridian-product-catalogue.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: minimum-order
+  question: What is the smallest first order I can place?
+  doc: meridian-product-catalogue.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: free-freight
+  question: How much do I need to spend for free shipping?
+  doc: meridian-product-catalogue.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: payment-terms
+  question: Can a new wholesale account get net 30 terms straight away?
+  doc: meridian-product-catalogue.pdf
+  pages: [3]
+  kind: lookup
+
+- id: volume-discount
+  question: What discount applies at 30,000 dollars of annual spend?
+  doc: meridian-product-catalogue.pdf
+  pages: [3]
+  kind: numeric
+
+- id: refrigerated-shipping
+  question: Which days do chilled items ship?
+  doc: meridian-product-catalogue.pdf
+  pages: [3]
+  kind: lookup
+
+- id: coffee-freshness
+  question: How soon after roasting is the coffee at its best?
+  doc: meridian-product-catalogue.pdf
+  pages: [4]
+  kind: lookup
+
+- id: cold-brew-returns
+  question: Can I return cold brew concentrate I no longer want?
+  doc: meridian-product-catalogue.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: private-label-minimum
+  question: What is the minimum volume for private label roasting?
+  doc: meridian-product-catalogue.pdf
+  pages: [4]
+  kind: lookup
+
+- id: free-samples
+  question: Can I get samples before opening an account?
+  doc: meridian-product-catalogue.pdf
+  pages: [4]
+  kind: paraphrase
+
+- id: barista-training
+  question: Do I get staff training included, and at what spend level?
+  doc: meridian-product-catalogue.pdf
+  pages: [5]
+  kind: paraphrase
+
+- id: logo-usage
+  question: Can I put the Meridian logo on my own materials?
+  doc: meridian-product-catalogue.pdf
+  pages: [5]
+  kind: paraphrase
+
+# ── Security policy (overlaps handbook and runbook on purpose) ────────────────
+
+- id: data-classification
+  question: How many data classification levels are there and what are they?
+  doc: meridian-security-policy.pdf
+  pages: [1]
+  kind: lookup
+
+- id: unclassified-default
+  question: How is data treated before someone has classified it?
+  doc: meridian-security-policy.pdf
+  pages: [1]
+  kind: distractor
+
+- id: sms-second-factor
+  question: Is an SMS code acceptable as a second factor for production?
+  doc: meridian-security-policy.pdf
+  pages: [2]
+  kind: distractor
+
+- id: access-revocation-speed
+  question: How quickly is access revoked after someone leaves the company?
+  doc: meridian-security-policy.pdf
+  pages: [2]
+  kind: distractor
+
+- id: shared-accounts
+  question: What happens when a vendor system cannot support individual logins?
+  doc: meridian-security-policy.pdf
+  pages: [2]
+  kind: paraphrase
+
+- id: password-reuse
+  question: May I use a work password on a personal service?
+  doc: meridian-security-policy.pdf
+  pages: [2]
+  kind: distractor
+
+- id: patch-window
+  question: How quickly must a critical vulnerability be patched on a laptop?
+  doc: meridian-security-policy.pdf
+  pages: [3]
+  kind: numeric
+
+- id: personal-devices
+  question: Can I use my own phone for work?
+  doc: meridian-security-policy.pdf
+  pages: [3]
+  kind: paraphrase
+
+- id: vendor-breach-notice
+  question: How fast must a vendor tell us about a breach of restricted data?
+  doc: meridian-security-policy.pdf
+  pages: [3]
+  kind: numeric
+
+- id: two-reviewer-rule
+  question: Which code changes need two reviewers?
+  doc: meridian-security-policy.pdf
+  pages: [4]
+  kind: lookup
+
+- id: dependency-scanning
+  question: What happens when a dependency scan finds a critical vulnerability?
+  doc: meridian-security-policy.pdf
+  pages: [4]
+  kind: distractor
+
+- id: pentest-findings
+  question: What did the last penetration test turn up?
+  doc: meridian-security-policy.pdf
+  pages: [4]
+  kind: lookup
+
+- id: log-redaction
+  question: How are secrets kept out of logs?
+  doc: meridian-security-policy.pdf
+  pages: [4]
+  kind: distractor
+
+- id: security-escalation
+  question: Who must be told within an hour of a confirmed Severity 1 security incident?
+  doc: meridian-security-policy.pdf
+  pages: [5]
+  kind: distractor
+
+- id: breach-notification-clock
+  question: How long is assumed for regulatory notification when personal data is involved?
+  doc: meridian-security-policy.pdf
+  pages: [5]
+  kind: numeric
+
+- id: policy-exception
+  question: How do I get an exception to the security policy?
+  doc: meridian-security-policy.pdf
+  pages: [5]
+  kind: paraphrase

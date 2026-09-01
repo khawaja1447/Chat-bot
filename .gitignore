@@ -1,10 +1,24 @@
+# Secrets
 .env
+.streamlit/secrets.toml
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.ruff_cache/
+
+# Environments
 .venv/
 venv/
 env/
+
+# Built index — rebuildable from the PDFs, and large
+.index/
 faiss_index/
+
+# PDFs are ignored by default; the sample corpus is committed on purpose
+# so a reviewer can run the eval without finding documents first.
 *.pdf
-.streamlit/secrets.toml
+!samples/*.pdf

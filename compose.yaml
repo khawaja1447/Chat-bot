@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      # Optional. Leave unset and each visitor supplies their own key in the sidebar.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      RAGBOT_LOG_LEVEL: ${RAGBOT_LOG_LEVEL:-INFO}
+    volumes:
+      - index:/data
+
+volumes:
+  index:

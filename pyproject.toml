@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+# Model-downloading tests are opt-in: `pytest -m slow`.
+addopts = "-m 'not slow'"
+markers = ["slow: needs a real sentence-transformers model (downloads on first run)"]
+
+[tool.ruff]
+target-version = "py311"
+exclude = [".venv", ".index"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

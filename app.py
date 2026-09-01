@@ -1,290 +1,334 @@
 """
-PDF Q&A RAG Chatbot — Streamlit UI
+PDF Q&A over a document library — Streamlit UI.
+
+The interesting parts of this project are in ragbot/; this file is presentation
+and session state only.
 """
 
-import streamlit as st
-from rag_engine import process_pdf, ask
+from __future__ import annotations
 
-# ── Page config ────────────────────────────────────────────────────────────────
+import os
+import pathlib
+
+import streamlit as st
+from dotenv import load_dotenv
+
+from ragbot.config import DEFAULT, LLM_MODEL, MAX_DOCS, RagConfig
+from ragbot.ingest import IngestError, chunk_document, extract_document
+from ragbot.observability import configure as configure_logging
+from ragbot.pipeline import answer_stream, pair_history
+from ragbot.store import DocumentStore
+
+load_dotenv()
+configure_logging()
+
+INDEX_PATH = pathlib.Path(os.getenv("RAGBOT_INDEX_PATH", ".index"))
+
 st.set_page_config(
-    page_title="PDF Q&A Chatbot",
+    page_title="PDF Q&A — Hybrid RAG",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ─────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(
+    """
 <style>
     .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
+        font-size: 2.1rem; font-weight: 700;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.2rem;
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        margin-bottom: 0.1rem;
     }
-    .sub-header {
-        color: #6b7280;
-        font-size: 1rem;
-        margin-bottom: 1.5rem;
-    }
-    .chat-message-user {
-        background: #1e3a5f;
-        border-left: 4px solid #3b82f6;
-        padding: 0.75rem 1rem;
-        border-radius: 0 8px 8px 0;
-        margin: 0.5rem 0;
-        color: #e8f0fe !important;
-    }
-    .chat-message-bot {
-        background: #1a3a2a;
-        border-left: 4px solid #22c55e;
-        padding: 0.75rem 1rem;
-        border-radius: 0 8px 8px 0;
-        margin: 0.5rem 0;
-        color: #d1fae5 !important;
-    }
-    .source-box {
-        background: #2d2a12;
-        border: 1px solid #a16207;
-        border-radius: 6px;
-        padding: 0.5rem 0.75rem;
-        color: #fef08a !important;
-        font-size: 0.8rem;
-        margin-top: 0.4rem;
-    }
-    .stat-card {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 0.75rem;
-        text-align: center;
-    }
+    .sub-header { color: #6b7280; font-size: 0.95rem; margin-bottom: 1.2rem; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
-# ── Session state ──────────────────────────────────────────────────────────────
-def init_state():
+# ── Session state ─────────────────────────────────────────────────────────────
+
+def init_state() -> None:
     defaults = {
-        "vector_store": None,
-        "chat_history": [],          # list of {"role": ..., "content": ..., "sources": ...}
-        "pdf_processed": False,
-        "pdf_name": "",
-        "chunk_count": 0,
+        "store": None,
+        "chat_history": [],
+        "doc_filter": [],
+        "loaded_from_disk": False,
     }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
 
 init_state()
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+def secret(name: str) -> str:
+    """st.secrets raises outright when no secrets.toml exists — the normal local case."""
+    try:
+        return st.secrets.get(name, "")
+    except Exception:
+        return ""
+
+
+def restore_index() -> None:
+    """Load a previously built index once per session, so a restart is cheap."""
+    if st.session_state.store is not None or st.session_state.loaded_from_disk:
+        return
+    st.session_state.loaded_from_disk = True
+    if DocumentStore.exists(INDEX_PATH):
+        try:
+            st.session_state.store = DocumentStore.load(INDEX_PATH)
+        except Exception as exc:            # a stale index must not brick the app
+            st.session_state.store = None
+            st.warning(f"Could not load the saved index ({exc}). Upload documents to rebuild.")
+
+
+restore_index()
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+
 with st.sidebar:
     st.markdown("## ⚙️ Configuration")
-    st.markdown("---")
 
-    api_key = st.text_input(
+    typed_key = st.text_input(
         "Groq API Key",
         type="password",
         placeholder="gsk_...",
-        help="Get a free key at https://console.groq.com/keys",
+        help="Free key at https://console.groq.com/keys. Leave blank to use "
+             "GROQ_API_KEY from .env or Streamlit secrets.",
     )
+    api_key = typed_key or secret("GROQ_API_KEY") or os.getenv("GROQ_API_KEY", "")
+    if api_key and not typed_key:
+        st.caption("🔑 Using GROQ_API_KEY from the environment.")
 
-    if api_key:
-        import os
-        os.environ["GROQ_API_KEY"] = api_key
+    with st.expander("Retrieval settings"):
+        use_hybrid = st.toggle(
+            "Hybrid search (BM25 + dense)", value=DEFAULT.use_hybrid,
+            help="Adds lexical matching, which catches exact rare terms that "
+                 "embeddings smear together.",
+        )
+        use_reranker = st.toggle(
+            "Cross-encoder reranking", value=DEFAULT.use_reranker,
+            help="Reads the query and each candidate together. Much more "
+                 "accurate ordering, ~250 ms.",
+        )
+        final_k = st.slider("Passages sent to the model", 3, 10, DEFAULT.final_k)
+
+    config: RagConfig = DEFAULT.variant(
+        use_hybrid=use_hybrid, use_reranker=use_reranker, final_k=final_k
+    )
 
     st.markdown("---")
-    st.markdown("## 📂 Upload PDF")
+    st.markdown("## 📚 Library")
 
-    uploaded_file = st.file_uploader(
-        "Choose a PDF file",
+    uploads = st.file_uploader(
+        "Add PDFs",
         type=["pdf"],
-        help="Max recommended: ~50 pages for best performance",
+        accept_multiple_files=True,
+        help=f"Up to {MAX_DOCS} documents. Embeddings run locally on CPU.",
     )
 
-    if uploaded_file and api_key:
-        if st.button("🚀 Process PDF", use_container_width=True, type="primary"):
-            with st.spinner("Reading & indexing your PDF..."):
-                try:
-                    vs, n_chunks = process_pdf(uploaded_file)
-                    st.session_state.vector_store = vs
-                    st.session_state.pdf_processed = True
-                    st.session_state.pdf_name = uploaded_file.name
-                    st.session_state.chunk_count = n_chunks
-                    st.session_state.chat_history = []
-                    st.success(f"✅ Ready! Indexed **{n_chunks}** chunks.")
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
-    elif uploaded_file and not api_key:
-        st.warning("⚠️ Enter your API key first.")
+    if uploads and st.button("🚀 Index documents", use_container_width=True, type="primary"):
+        existing = set(st.session_state.store.doc_names) if st.session_state.store else set()
+        added, skipped, failed = [], [], []
 
-    if st.session_state.pdf_processed:
-        st.markdown("---")
-        st.markdown("### 📊 Document Stats")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"""<div class="stat-card">
-                <div style="font-size:1.4rem">📄</div>
-                <div style="font-weight:600">{st.session_state.pdf_name[:18]}…</div>
-                <div style="font-size:0.75rem;color:#6b7280">File</div>
-            </div>""", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""<div class="stat-card">
-                <div style="font-size:1.4rem">🧩</div>
-                <div style="font-weight:600">{st.session_state.chunk_count}</div>
-                <div style="font-size:0.75rem;color:#6b7280">Chunks</div>
-            </div>""", unsafe_allow_html=True)
+        progress = st.progress(0.0, text="Starting…")
+        for i, upload in enumerate(uploads, start=1):
+            progress.progress(i / len(uploads), text=f"Indexing {upload.name}…")
+            if upload.name in existing:
+                skipped.append(upload.name)
+                continue
+            try:
+                document = extract_document(upload, upload.name)
+                chunks = chunk_document(document, config)
+                if st.session_state.store is None:
+                    st.session_state.store = DocumentStore.from_chunks(chunks)
+                else:
+                    st.session_state.store.add_chunks(chunks)
+                added.append(f"{upload.name} ({document.page_count}p)")
+            except IngestError as exc:
+                failed.append(str(exc))
+            except Exception as exc:
+                failed.append(f"{upload.name}: {exc}")
+        progress.empty()
 
-        if st.button("🗑️ Clear Chat", use_container_width=True):
+        if added:
+            st.session_state.store.save(INDEX_PATH)
+            st.session_state.chat_history = []
+            st.success("Indexed " + ", ".join(added))
+        if skipped:
+            st.info("Already indexed: " + ", ".join(skipped))
+        for message in failed:
+            st.error(message)
+        if added:
+            st.rerun()
+
+    store: DocumentStore | None = st.session_state.store
+
+    if store is not None:
+        stats = store.stats()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Docs", stats["documents"])
+        c2.metric("Pages", stats["pages"])
+        c3.metric("Chunks", stats["chunks"])
+
+        st.session_state.doc_filter = st.multiselect(
+            "Search only these documents",
+            options=store.doc_names,
+            default=st.session_state.doc_filter,
+            help="Leave empty to search the whole library.",
+        )
+
+        with st.expander("Manage documents"):
+            for name in store.doc_names:
+                row_a, row_b = st.columns([4, 1])
+                row_a.caption(name)
+                if row_b.button("🗑️", key=f"rm::{name}", help=f"Remove {name}"):
+                    try:
+                        store.remove_document(name)
+                        store.save(INDEX_PATH)
+                        st.session_state.chat_history = []
+                        st.rerun()
+                    except ValueError as exc:
+                        st.error(str(exc))
+
+        if st.button("🧹 Clear chat", use_container_width=True):
             st.session_state.chat_history = []
             st.rerun()
 
     st.markdown("---")
-    st.markdown("""
-    <div style="font-size:0.75rem;color:#9ca3af">
-    Built with LangChain · FAISS · Groq (Llama 3.3 70B)<br>
-    RAG Chatbot — Portfolio Project
-    </div>
-    """, unsafe_allow_html=True)
+    st.caption(
+        f"BM25 + FAISS → Reciprocal Rank Fusion → cross-encoder rerank → `{LLM_MODEL}` on Groq. "
+        "Embeddings run locally; only the question and retrieved excerpts leave the machine."
+    )
 
 
-# ── Main area ──────────────────────────────────────────────────────────────────
-st.markdown('<div class="main-header">📄 PDF Q&A Chatbot</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Upload a PDF and ask questions — powered by RAG + Llama 3.3 70B</div>', unsafe_allow_html=True)
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-# Architecture explainer (shown when no PDF is loaded)
-if not st.session_state.pdf_processed:
-    st.markdown("---")
-    c1, c2, c3, c4 = st.columns(4)
-    steps = [
-        ("1️⃣", "Upload PDF", "PyMuPDF extracts all text from your document"),
-        ("2️⃣", "Chunk & Embed", "Text is split into chunks and embedded locally (MiniLM)"),
-        ("3️⃣", "Vector Search", "Your question retrieves the most relevant chunks (FAISS)"),
-        ("4️⃣", "LLM Answer", "Llama 3.3 70B generates an answer grounded in the context"),
-    ]
-    for col, (icon, title, desc) in zip([c1, c2, c3, c4], steps):
-        with col:
-            st.markdown(f"""
-            <div style="text-align:center;padding:1rem;background:#1e293b;
-                        border-radius:10px;border:1px solid #334155;height:140px;color:#e2e8f0;">
-                <div style="font-size:2rem">{icon}</div>
-                <div style="font-weight:600;margin:0.4rem 0;color:#f1f5f9">{title}</div>
-                <div style="font-size:0.8rem;color:#94a3b8">{desc}</div>
-            </div>""", unsafe_allow_html=True)
+st.markdown('<div class="main-header">📄 PDF Q&A — Hybrid RAG</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-header">Ask across a library of PDFs. Every answer cites the '
+    "document and page it came from.</div>",
+    unsafe_allow_html=True,
+)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.info("👈 Enter your API key and upload a PDF to get started!")
+if store is None:
+    st.info("👈 Add one or more PDFs in the sidebar to get started.")
+    left, right = st.columns(2)
+    with left:
+        st.markdown(
+            "#### How retrieval works\n"
+            "1. **Dense** — FAISS over local MiniLM embeddings finds passages that mean "
+            "the same thing, even with no words in common.\n"
+            "2. **Lexical** — BM25 catches the exact rare token an embedding blurs: a SKU, "
+            "an error code, `p99`.\n"
+            "3. **Fusion** — Reciprocal Rank Fusion merges the two on rank, so a BM25 score "
+            "and a cosine similarity never have to be made comparable.\n"
+            "4. **Rerank** — a cross-encoder reads the question and each candidate together "
+            "and reorders them.\n"
+            f"5. **Answer** — `{LLM_MODEL}` on Groq writes from the top passages and cites each one."
+        )
+    with right:
+        st.markdown(
+            "#### Measured, not asserted\n"
+            "`eval/golden_set.yaml` holds 109 questions labelled with the document and page "
+            "that actually answers them. `eval/run_eval.py` scores retrieval against it with "
+            "no LLM in the loop.\n\n"
+            "See `docs/EVALUATION.md` for the current numbers, including the cases that still "
+            "fail.\n\n"
+            "A sample corpus is in `samples/` — six documents that deliberately overlap, "
+            "including two annual reports whose figures differ only by year."
+        )
     st.stop()
 
-# ── Chat interface ─────────────────────────────────────────────────────────────
-st.markdown(f"### 💬 Chat with **{st.session_state.pdf_name}**")
-st.markdown("---")
 
-# Render existing chat history
-chat_container = st.container()
-with chat_container:
-    if not st.session_state.chat_history:
-        st.markdown("""
-        <div style="text-align:center;padding:2rem;color:#9ca3af">
-            <div style="font-size:2rem">💬</div>
-            <div>Ask anything about your document!</div>
-            <div style="font-size:0.85rem">e.g. "Summarize the main points", "What does section 3 say about X?"</div>
-        </div>""", unsafe_allow_html=True)
+def render_sources(hits: list, container=None) -> None:
+    target = container or st
+    if not hits:
+        return
+    with target.expander(f"📎 {len(hits)} passages used", expanded=False):
+        for i, hit in enumerate(hits, start=1):
+            bits = [f"**{i}. {hit.chunk.doc} — p. {hit.chunk.page}**"]
+            trace = []
+            if hit.dense_rank:
+                trace.append(f"dense #{hit.dense_rank}")
+            if hit.sparse_rank:
+                trace.append(f"bm25 #{hit.sparse_rank}")
+            if hit.rerank_score is not None:
+                trace.append(f"rerank {hit.rerank_score:+.2f}")
+            if trace:
+                bits.append("  \n`" + "  ·  ".join(trace) + "`")
+            st.markdown("".join(bits))
+            st.text(hit.chunk.text[:400].strip().replace("\n", " ") + "…")
 
-    for msg in st.session_state.chat_history:
-        if msg["role"] == "user":
-            st.markdown(f"""<div class="chat-message-user">
-                <strong>You:</strong> {msg["content"]}
-            </div>""", unsafe_allow_html=True)
-        else:
-            st.markdown(f"""<div class="chat-message-bot">
-                <strong>🤖 Assistant:</strong> {msg["content"]}
-            </div>""", unsafe_allow_html=True)
-            if msg.get("sources"):
-                with st.expander("📎 Source excerpts used", expanded=False):
-                    for i, src in enumerate(msg["sources"], 1):
-                        snippet = src.page_content[:300].strip().replace("\n", " ")
-                        st.markdown(f"""<div class="source-box">
-                            <strong>Chunk {i}:</strong> …{snippet}…
-                        </div>""", unsafe_allow_html=True)
 
-# ── Input ──────────────────────────────────────────────────────────────────────
-st.markdown("---")
-with st.form("chat_form", clear_on_submit=True):
-    col_input, col_btn = st.columns([5, 1])
-    with col_input:
-        user_input = st.text_input(
-            "Your question",
-            placeholder="Ask a question about the document...",
-            label_visibility="collapsed",
-        )
-    with col_btn:
-        submitted = st.form_submit_button("Send ➤", use_container_width=True, type="primary")
+for message in st.session_state.chat_history:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+        if message.get("hits"):
+            render_sources(message["hits"])
+        if message.get("rewritten"):
+            st.caption(f"↻ searched for: _{message['rewritten']}_")
 
-if submitted and user_input.strip():
-    st.session_state.chat_history.append({"role": "user", "content": user_input})
 
-    with st.spinner("Thinking..."):
+def handle_question(question: str) -> bool:
+    """Returns True when an answer was produced; False means an error is on screen."""
+    history = pair_history(st.session_state.chat_history)
+    st.session_state.chat_history.append({"role": "user", "content": question})
+
+    with st.chat_message("user"):
+        st.write(question)
+
+    with st.chat_message("assistant"):
         try:
-            # Build (user, assistant) history pairs from previous turns only
-            history = []
-            msgs = st.session_state.chat_history[:-1]  # exclude current question
-            i = 0
-            while i < len(msgs) - 1:
-                if msgs[i]["role"] == "user" and msgs[i+1]["role"] == "assistant":
-                    history.append((msgs[i]["content"], msgs[i+1]["content"]))
-                    i += 2
-                else:
-                    i += 1
+            with st.spinner("Retrieving…"):
+                streaming = answer_stream(
+                    store,
+                    question,
+                    history,
+                    api_key,
+                    config,
+                    docs=st.session_state.doc_filter or None,
+                )
+            text = st.write_stream(streaming.tokens())
+        except Exception as exc:
+            st.session_state.chat_history.pop()
+            st.error(f"❌ {exc}")
+            # Do not rerun: a rerun would wipe this message before it is read.
+            return False
 
-            result = ask(st.session_state.vector_store, user_input, history, api_key)
-            answer = result["answer"]
-            sources = result.get("sources", [])
-            error = None
-        except Exception as e:
-            answer = None
-            sources = []
-            error = str(e)
+        render_sources(streaming.hits)
+        rewritten = (
+            streaming.search_query if streaming.search_query != question else None
+        )
+        if rewritten:
+            st.caption(f"↻ searched for: _{rewritten}_")
 
-    if error:
-        st.error(f"❌ **Error:** {error}")
-        st.session_state.chat_history.pop()  # remove the unanswered user msg
-    else:
-        st.session_state.chat_history.append({
+    st.session_state.chat_history.append(
+        {
             "role": "assistant",
-            "content": answer,
-            "sources": sources,
-        })
-        st.rerun()
+            "content": text,
+            "hits": streaming.hits,
+            "rewritten": rewritten,
+        }
+    )
+    return True
 
-# Suggested questions
-if st.session_state.pdf_processed and not st.session_state.chat_history:
-    st.markdown("#### 💡 Try asking:")
-    q_cols = st.columns(3)
-    sample_qs = [
-        "Summarize the key points of this document",
-        "What is the main topic discussed?",
-        "List the most important facts mentioned",
+
+if not st.session_state.chat_history:
+    st.markdown("##### 💡 Try asking")
+    suggestions = [
+        "What was total revenue in 2024?",
+        "How many days of paid holiday do I get?",
+        "The nightly billing job died halfway. How do I restart it?",
     ]
-    for col, q in zip(q_cols, sample_qs):
-        with col:
-            if st.button(q, use_container_width=True):
-                st.session_state.chat_history.append({"role": "user", "content": q})
-                with st.spinner("Thinking..."):
-                    try:
-                        result = ask(st.session_state.vector_store, q, [], api_key)
-                        answer = result["answer"]
-                        sources = result.get("sources", [])
-                    except Exception as e:
-                        answer = f"⚠️ Error: {e}"
-                        sources = []
-                st.session_state.chat_history.append({
-                    "role": "assistant",
-                    "content": answer,
-                    "sources": sources,
-                })
-                st.rerun()
+    for column, suggestion in zip(st.columns(len(suggestions)), suggestions, strict=True):
+        if column.button(suggestion, use_container_width=True) and handle_question(suggestion):
+            st.rerun()
+
+if prompt := st.chat_input("Ask a question about your documents…"):
+    if prompt.strip() and handle_question(prompt.strip()):
+        st.rerun()
