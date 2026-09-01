@@ -100,9 +100,10 @@ CI fails the build if Recall@1, Recall@5 or MRR drops more than 0.02 below the
 recorded floor (`eval/check_thresholds.py`). A gate you only look at when it is
 green is decoration.
 
-> The chunk-size sweep is why the default is 900 characters. An earlier version of
-> this project used 2500 — the sweep scored that at Recall@1 0.780 against 0.908,
-> which is exactly the kind of thing you cannot find by reasoning about it.
+> The chunk-size sweep is why the default is 900 characters and not the round 1000
+> this project started with. Across 600–2500 the spread in Recall@1 was 0.780 to
+> 0.908 — a bigger difference than between two of the retrieval strategies above,
+> and not something you can reason your way to.
 
 ---
 
@@ -205,9 +206,14 @@ above an irrelevant one.
 
 - **Text PDFs only.** Scanned documents are rejected with a clear message rather
   than silently indexed as nothing. OCR is not wired up.
+- **The corpus is small.** 6 documents, 29 pages, 58 chunks. Recall@5 saturates at
+  that size, which is why Recall@1 and MRR are the metrics quoted. The numbers are
+  a fair comparison *between retrieval strategies*; they are not evidence about
+  behaviour at 10k or 1M chunks, where ANN recall and index cost start to matter.
 - **The golden set is synthetic** and written by the same author as the corpus.
   It measures retrieval mechanics honestly, but it is not a substitute for
-  evaluation on real user questions.
+  evaluation on real user questions. Running this harness against a public
+  QA-over-documents benchmark is the most useful next step.
 - **Retrieval only.** Answer faithfulness and citation correctness are not scored;
   the grounding here is prompt-level, not measured.
 - **In-process index.** FAISS in memory with a disk snapshot — fine to a few
@@ -218,7 +224,8 @@ above an irrelevant one.
 
 ## Next
 
-Faithfulness scoring on generated answers, an OCR path for scanned PDFs, and
+Evaluation against a third-party benchmark rather than a self-authored set,
+faithfulness scoring on generated answers, an OCR path for scanned PDFs, and
 swapping the flat FAISS index for HNSW once the corpus outgrows exact search.
 
 ---
